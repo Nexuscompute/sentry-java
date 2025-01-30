@@ -7,13 +7,40 @@ import android.view.ViewGroup;
 import io.sentry.android.core.SentryAndroidOptions;
 import io.sentry.internal.gestures.GestureTargetLocator;
 import io.sentry.internal.gestures.UiElement;
-import io.sentry.util.Objects;
 import java.util.LinkedList;
 import java.util.Queue;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-final class ViewUtils {
+@ApiStatus.Internal
+public final class ViewUtils {
+
+  private static final int[] coordinates = new int[2];
+
+  /**
+   * Verifies if the given touch coordinates are within the bounds of the given view.
+   *
+   * @param view the view to check if the touch coordinates are within its bounds
+   * @param x - the x coordinate of a {@link MotionEvent}
+   * @param y - the y coordinate of {@link MotionEvent}
+   * @return true if the touch coordinates are within the bounds of the view, false otherwise
+   */
+  private static boolean touchWithinBounds(
+      final @Nullable View view, final float x, final float y) {
+    if (view == null) {
+      return false;
+    }
+
+    view.getLocationOnScreen(coordinates);
+    int vx = coordinates[0];
+    int vy = coordinates[1];
+
+    int w = view.getWidth();
+    int h = view.getHeight();
+
+    return !(x < vx || x > vx + w || y < vy || y > vy + h);
+  }
 
   /**
    * Finds a target view, that has been selected/clicked by the given coordinates x and y and the
@@ -38,7 +65,12 @@ final class ViewUtils {
 
     @Nullable UiElement target = null;
     while (queue.size() > 0) {
-      final View view = Objects.requireNonNull(queue.poll(), "view is required");
+      final View view = queue.poll();
+
+      if (!touchWithinBounds(view, x, y)) {
+        // if the touch is not hitting the view, skip traversal of its children
+        continue;
+      }
 
       if (view instanceof ViewGroup) {
         final ViewGroup viewGroup = (ViewGroup) view;
@@ -52,7 +84,7 @@ final class ViewUtils {
         if (newTarget != null) {
           if (targetType == UiElement.Type.CLICKABLE) {
             target = newTarget;
-          } else {
+          } else if (targetType == UiElement.Type.SCROLLABLE) {
             return newTarget;
           }
         }
@@ -85,13 +117,19 @@ final class ViewUtils {
    * @return human-readable view id
    * @throws Resources.NotFoundException in case the view id was not found
    */
-  static String getResourceId(final @NotNull View view) throws Resources.NotFoundException {
+  public static String getResourceId(final @NotNull View view) throws Resources.NotFoundException {
     final int viewId = view.getId();
-    final Resources resources = view.getContext().getResources();
-    String resourceId = "";
-    if (resources != null) {
-      resourceId = resources.getResourceEntryName(viewId);
+    if (viewId == View.NO_ID || isViewIdGenerated(viewId)) {
+      throw new Resources.NotFoundException();
     }
-    return resourceId;
+    final Resources resources = view.getContext().getResources();
+    if (resources != null) {
+      return resources.getResourceEntryName(viewId);
+    }
+    return "";
+  }
+
+  private static boolean isViewIdGenerated(int id) {
+    return (id & 0xFF000000) == 0 && (id & 0x00FFFFFF) != 0;
   }
 }

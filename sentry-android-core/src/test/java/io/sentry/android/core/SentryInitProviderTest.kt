@@ -20,13 +20,14 @@ class SentryInitProviderTest {
     @BeforeTest
     fun `set up`() {
         Sentry.close()
+        ContextUtils.resetInstance()
     }
 
     @Test
     fun `when missing applicationId, SentryInitProvider throws`() {
         val providerInfo = ProviderInfo()
 
-        val mockContext = ContextUtilsTest.createMockContext()
+        val mockContext = ContextUtilsTestHelper.createMockContext()
         providerInfo.authority = SentryInitProvider::class.java.name
         assertFailsWith<IllegalStateException> { sentryInitProvider.attachInfo(mockContext, providerInfo) }
     }
@@ -39,7 +40,7 @@ class SentryInitProviderTest {
         providerInfo.authority = AUTHORITY
 
         val metaData = Bundle()
-        val mockContext = ContextUtilsTest.mockMetaData(metaData = metaData)
+        val mockContext = ContextUtilsTestHelper.mockMetaData(metaData = metaData)
 
         metaData.putString(ManifestMetadataReader.DSN, "https://key@sentry.io/123")
 
@@ -56,7 +57,7 @@ class SentryInitProviderTest {
         providerInfo.authority = AUTHORITY
 
         val metaData = Bundle()
-        val mockContext = ContextUtilsTest.mockMetaData(metaData = metaData)
+        val mockContext = ContextUtilsTestHelper.mockMetaData(metaData = metaData)
 
         metaData.putString(ManifestMetadataReader.DSN, "")
 
@@ -73,7 +74,7 @@ class SentryInitProviderTest {
         providerInfo.authority = AUTHORITY
 
         val metaData = Bundle()
-        val mockContext = ContextUtilsTest.mockMetaData(metaData = metaData)
+        val mockContext = ContextUtilsTestHelper.mockMetaData(metaData = metaData)
 
         metaData.putString(ManifestMetadataReader.DSN, null)
 
@@ -88,7 +89,7 @@ class SentryInitProviderTest {
         providerInfo.authority = AUTHORITY
 
         val metaData = Bundle()
-        val mockContext = ContextUtilsTest.mockMetaData(metaData = metaData)
+        val mockContext = ContextUtilsTestHelper.mockMetaData(metaData = metaData)
 
         metaData.putString(ManifestMetadataReader.DSN, "invalid dsn")
 
@@ -103,7 +104,7 @@ class SentryInitProviderTest {
         providerInfo.authority = AUTHORITY
 
         val metaData = Bundle()
-        val mockContext = ContextUtilsTest.mockMetaData(metaData = metaData)
+        val mockContext = ContextUtilsTestHelper.mockMetaData(metaData = metaData)
 
         metaData.putBoolean(ManifestMetadataReader.AUTO_INIT, false)
 
@@ -129,11 +130,25 @@ class SentryInitProviderTest {
         val sentryOptions = SentryAndroidOptions()
 
         val metaData = Bundle()
-        val mockContext = ContextUtilsTest.mockMetaData(metaData = metaData)
+        val mockContext = ContextUtilsTestHelper.mockMetaData(metaData = metaData)
         metaData.putBoolean(ManifestMetadataReader.NDK_ENABLE, false)
 
         AndroidOptionsInitializer.loadDefaultAndMetadataOptions(sentryOptions, mockContext)
-        AndroidOptionsInitializer.initializeIntegrationsAndProcessors(sentryOptions, mockContext)
+
+        val loadClass = LoadClass()
+        val activityFramesTracker = ActivityFramesTracker(loadClass, sentryOptions)
+        AndroidOptionsInitializer.installDefaultIntegrations(
+            mockContext,
+            sentryOptions,
+            BuildInfoProvider(AndroidLogger()),
+            loadClass,
+            activityFramesTracker,
+            false,
+            false,
+            false
+        )
+
+        AndroidOptionsInitializer.initializeIntegrationsAndProcessors(sentryOptions, mockContext, loadClass, activityFramesTracker)
 
         assertFalse(sentryOptions.isEnableNdk)
     }
